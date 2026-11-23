@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0f172a">
+    <title>Inspección Visual PWA</title>
+    <link rel="manifest" href="./manifest.json">
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <main class="app">
+      <header class="app-header">
+        <div>
+          <p class="eyebrow">PWA · Cámara local</p>
+          <h1>Inspección Visual</h1>
+        </div>
+        <button id="btn-instalar" class="button button-install" type="button" hidden>
+          Instalar app
+        </button>
+      </header>
+
+      <section class="camera-card" aria-label="Vista previa de cámara">
+        <video id="visor-camara" autoplay playsinline muted></video>
+        <p id="estado-camara" class="status" role="status" aria-live="polite">
+          Cámara apagada
+        </p>
+      </section>
+
+      <section id="aviso-permiso" class="permission-card" role="dialog" aria-modal="true" hidden>
+        <h2>Uso consciente de la cámara</h2>
+        <p>
+          Esta aplicación requiere acceso a tu cámara únicamente para mostrar una
+          vista previa local en pantalla. Ninguna imagen se envía a servidores externos.
+        </p>
+        <button id="btn-confirmar-permiso" class="button button-primary" type="button">
+          Aceptar y encender cámara
+        </button>
+      </section>
+
+      <nav class="controls" aria-label="Controles de cámara">
+        <button id="btn-preparar-camara" class="button button-primary" type="button">
+          Solicitar acceso a cámara
+        </button>
+        <button id="btn-alternar-camara" class="button" type="button">
+          Cambiar a frontal
+        </button>
+        <button id="btn-apagar-camara" class="button button-danger" type="button">
+          Apagar cámara
+        </button>
+      </nav>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
