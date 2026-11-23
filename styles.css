@@ -258,6 +258,20 @@ h1 {
   background: #def1e7;
 }
 
+.app-footer {
+  display: flex;
+  justify-content: center;
+  gap: 5px;
+  margin-top: 24px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.app-footer strong {
+  color: #40545d;
+  font-weight: 700;
+}
+
 [hidden] {
   display: none !important;
 }
