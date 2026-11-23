@@ -67,6 +67,22 @@ El botón **Solicitar acceso a cámara** solo hace visible `#aviso-permiso`. El 
 
 `facingMode` expresa qué cámara se prefiere. El navegador y el dispositivo determinan si pueden cumplir esa solicitud.
 
+La solicitud tiene esta forma:
+
+```js
+const restricciones = {
+  video: { facingMode: modo },
+  audio: false
+};
+
+navigator.mediaDevices.getUserMedia(restricciones)
+```
+
+- `video` solicita una pista de video.
+- `facingMode` indica la cámara preferida: `environment` para la trasera y `user` para la frontal.
+- `audio: false` indica que no se solicita el micrófono.
+- La función solicita acceso. Si el usuario autoriza la cámara, la Promesa se resuelve con un `MediaStream`.
+
 ### Promesas y errores de cámara
 
 `getUserMedia()` devuelve una Promesa, por eso el código encadena `.then()` y `.catch()`:
@@ -79,11 +95,94 @@ No se usa `async/await`; el flujo asíncrono cumple la restricción del proyecto
 
 ### Detener y alternar cámaras
 
-`detenerCamaraActiva()` obtiene las pistas del flujo con `getTracks()` y llama a `stop()` en cada una. Esto libera el hardware antes de cambiar de cámara y evita dejar el indicador de cámara encendido.
+#### ¿Qué es una pista (`track`)?
 
-El botón **Cambiar a frontal/trasera** alterna entre `environment` y `user`, actualiza su etiqueta e inicia la cámara seleccionada. El botón **Apagar cámara** detiene las pistas, elimina el flujo del video y muestra **Cámara apagada**.
+Un `MediaStream` es el flujo multimedia completo que entrega `getUserMedia()`. Ese flujo contiene una o varias pistas (`MediaStreamTrack`): normalmente una pista por cada fuente de video o audio. En esta app se solicita video y se desactiva el audio, así que se espera una pista de video y ninguna de micrófono.
 
-También se intenta detener el flujo al salir de la página mediante el evento `beforeunload`.
+Una pista es el componente que representa la captura de un medio. El objeto `track` no es el video de la página: es la conexión activa con el sensor. Si solo se oculta el video o se pone `srcObject` en `null`, la cámara podría seguir capturando. Por eso también hay que detener las pistas.
+
+#### ¿Qué hace `getTracks().forEach(track => track.stop())`?
+
+```js
+streamActual.getTracks().forEach((track) => {
+  track.stop();
+});
+```
+
+- `streamActual.getTracks()` devuelve un arreglo con todas las pistas del flujo.
+- `.forEach(...)` recorre ese arreglo y ejecuta la función una vez por pista.
+- `track.stop()` termina la captura de esa pista. Al detener las pistas de este flujo, el navegador puede liberar la cámara si ningún otro flujo la está usando.
+- `streamActual = null` borra la referencia que guardaba la aplicación. Esta asignación, por sí sola, no detiene la cámara; la detención real la hace `track.stop()`.
+
+Se usan todas las pistas con `getTracks()` en vez de detener solo video para que la función también libere cualquier pista de audio si en el futuro se agregara.
+
+#### Diferencia entre detener y desconectar el video
+
+- `track.stop()` detiene la captura y libera el uso de esa pista.
+- `visorVideo.srcObject = null` desconecta el flujo del elemento `<video>` y limpia la vista.
+
+Se hacen ambas cosas: apagar la pista libera el sensor; limpiar `srcObject` quita del reproductor el flujo que ya se detuvo.
+
+#### Alternancia de lente paso a paso
+
+Al pulsar **Cambiar a frontal/trasera**, el manejador:
+
+1. Invierte `modoCamaraActual`: `environment` pasa a `user` y `user` a `environment`.
+2. Cambia el texto del botón para indicar cuál sería el siguiente lente.
+3. Vuelve a llamar a `iniciarCamara()` con el modo nuevo.
+4. `iniciarCamara()` detiene el flujo anterior antes de pedir el otro.
+
+El permiso inicial del aviso de la aplicación y el permiso del navegador son dos cosas distintas: el primero explica y confirma la intención en la interfaz; el segundo es la autorización del sistema para usar el hardware.
+
+El botón **Apagar cámara** llama a `detenerCamaraActiva()`, establece `srcObject` en `null` y muestra **Cámara apagada**. También se intenta detener el flujo al salir de la página mediante el evento `beforeunload`.
+
+### Métodos y propiedades de JavaScript usados
+
+| Método o propiedad | Qué hace en este proyecto |
+|---|---|
+| `document.getElementById(id)` | Busca un elemento HTML por su atributo `id`, por ejemplo el video o un botón. |
+| `element.addEventListener(tipo, funcion)` | Registra una función para responder a un evento, como `click`, `beforeinstallprompt` o `beforeunload`. |
+| `event.preventDefault()` | Evita la acción de instalación automática del navegador para poder ofrecer el botón propio. |
+| `navigator.mediaDevices.getUserMedia(restricciones)` | Solicita permiso y acceso a cámara/micrófono; devuelve una Promesa con el `MediaStream` autorizado. |
+| `stream.getTracks()` | Obtiene todas las pistas multimedia que forman el flujo. |
+| `track.stop()` | Finaliza una pista y detiene su captura. |
+| `video.srcObject = stream` | Asigna el flujo al elemento de video para presentar la cámara. Es una propiedad, no un método. |
+| `element.textContent = mensaje` | Cambia el texto de estado de forma directa, sin interpretarlo como HTML. |
+| `element.hidden = true/false` | Oculta o muestra elementos como el aviso y el botón de instalación. |
+| `Promise.resolve()` | Devuelve una Promesa ya resuelta cuando no existe la API de cámara; así `iniciarCamara()` conserva un retorno de tipo Promesa. El estado de la interfaz sigue indicando que no hay cámara disponible. |
+| `navigator.serviceWorker.register('./sw.js')` | Registra el Service Worker para que el navegador pueda instalarlo y controlar el ámbito de la app. |
+
+### Cómo leer el encadenamiento de Promesas
+
+```js
+getUserMedia(restricciones)
+  .then((stream) => {
+    // Se ejecuta si el navegador concede el acceso.
+  })
+  .catch((error) => {
+    // Se ejecuta si la solicitud falla o es rechazada.
+  });
+```
+
+- `.then(...)` procesa el resultado exitoso. El parámetro `stream` es el `MediaStream` que entrega el navegador.
+- `.catch(...)` procesa un rechazo, por ejemplo falta de permiso o de cámara.
+- `.finally(...)` se ejecuta al final tanto si la Promesa se cumple como si se rechaza. En la instalación se usa para limpiar la referencia al evento, que solo se debe utilizar una vez.
+- `return` delante de `getUserMedia(...)` permite que quien llame a `iniciarCamara()` reciba esa Promesa.
+
+En palabras sencillas: **`then` es el camino exitoso; `catch`, el camino de error; `finally`, la limpieza que siempre debe ocurrir.**
+
+### Funciones propias de `app.js`
+
+| Función | Cuándo se usa y para qué sirve |
+|---|---|
+| `actualizarMensajeEstado(mensaje)` | Escribe el mensaje recibido en `#estado-camara`, por ejemplo “Cámara apagada” o un error. Centraliza ese cambio para no repetir la asignación a `textContent`. |
+| `detenerCamaraActiva()` | Si existe `streamActual`, obtiene todas sus pistas, las detiene y luego limpia la variable. Se llama antes de iniciar otro lente y al apagar la cámara. |
+| `iniciarCamara(modo)` | Detiene el flujo anterior, construye las restricciones, pide el nuevo flujo con `getUserMedia()` y actualiza video y estado según el resultado. |
+| Manejador de `#btn-preparar-camara` | Muestra la tarjeta explicativa; todavía no pide acceso al hardware. |
+| Manejador de `#btn-confirmar-permiso` | Oculta la tarjeta y llama a `iniciarCamara(modoCamaraActual)`. |
+| Manejador de `#btn-alternar-camara` | Cambia el valor del modo, actualiza el texto del botón y vuelve a iniciar la cámara. |
+| Manejador de `#btn-apagar-camara` | Detiene pistas, desconecta el video y muestra el estado apagado. |
+| Manejador de `beforeunload` | Llama a `detenerCamaraActiva()` cuando la página está por descargarse. Es una limpieza adicional; el botón de apagado es el control explícito. |
 
 ### Video compatible con móviles
 
@@ -124,9 +223,29 @@ La estrategia permite servir los archivos precargados desde la caché. No signif
 
 El nombre versionado de la caché es importante: cuando cambian los recursos, incrementar la versión hace que se cree una caché nueva y se retiren las versiones viejas.
 
+#### Métodos del Service Worker
+
+- `event.waitUntil(promesa)`: informa al navegador que la instalación o activación sigue trabajando hasta que termine esa Promesa.
+- `caches.open(nombre)`: abre la caché con ese nombre o la crea si no existe.
+- `cache.addAll(ARCHIVOS)`: solicita y guarda todos los recursos de la lista de precarga.
+- `self.skipWaiting()`: pide que el Service Worker nuevo pase a activarse sin esperar a que el anterior deje de controlar todas las páginas.
+- `caches.keys()`: obtiene los nombres de las cachés existentes.
+- `caches.delete(nombre)`: borra una caché antigua.
+- `Promise.all(promesas)`: espera a que se completen todas las eliminaciones de caché.
+- `self.clients.claim()`: hace que el Service Worker activo controle las páginas abiertas de su ámbito.
+- `caches.match(solicitud)`: busca en las cachés una respuesta para una solicitud.
+- `fetch(solicitud)`: pide el recurso por red cuando no se encontró en caché.
+
 ### Instalación personalizada
 
-En navegadores compatibles, `beforeinstallprompt` se guarda para mostrar el botón **Instalar app** propio. Al pulsarlo, se llama a `prompt()` y se procesa `userChoice` mediante Promesas. `appinstalled` oculta el botón si la instalación se completa.
+En navegadores compatibles, `beforeinstallprompt` se guarda para mostrar el botón **Instalar app** propio:
+
+1. `event.preventDefault()` evita que el navegador muestre su aviso automático de inmediato.
+2. `eventoInstalacionDiferido = event` conserva el evento para usarlo cuando la persona pulse el botón.
+3. `eventoInstalacionDiferido.prompt()` abre el diálogo de instalación del navegador. No instala por la fuerza: la persona decide.
+4. `eventoInstalacionDiferido.userChoice` es una Promesa con la decisión; si `resultado.outcome` es `accepted`, se oculta el botón.
+5. `.finally(...)` limpia la referencia al evento, porque ese evento de instalación debe tratarse como una oportunidad de un solo uso.
+6. El evento `appinstalled` también oculta el botón después de una instalación confirmada.
 
 El evento `beforeinstallprompt` no está disponible en todos los navegadores. En iPhone, la instalación normalmente se realiza desde Safari con **Compartir → Agregar a pantalla de inicio**.
 
@@ -171,7 +290,11 @@ Prueba los permisos antes de la clase y lleva el teléfono cargado. Si el navega
 Para evitar una solicitud inesperada y explicar primero para qué se usará la cámara. La persona confirma mediante el aviso de la aplicación antes del diálogo del navegador.
 
 **¿Por qué detienes las pistas antes de cambiar de cámara?**  
-Para liberar el sensor activo. Algunos teléfonos no permiten abrir otra cámara hasta detener el flujo anterior.
+`getUserMedia()` entrega un `MediaStream`, y ese flujo contiene pistas (`MediaStreamTrack`) conectadas a las fuentes multimedia. `getTracks()` obtiene esas pistas y `track.stop()` termina cada captura. Detenerlas libera el sensor antes de solicitar el otro lente; dejar `srcObject` en `null` solo desconecta el reproductor y no sustituye la detención de las pistas.
+
+**¿Qué es una pista y qué contiene?**
+
+Es una fuente individual de audio o video dentro de un `MediaStream`. En esta app se solicita video y se configura `audio: false`, así que no se pide una pista de micrófono.
 
 **¿Qué diferencia hay entre `user` y `environment`?**  
 `user` solicita la cámara frontal; `environment`, la trasera.
@@ -201,6 +324,7 @@ La página no siempre puede volver a mostrar el diálogo nativo. Hay que cambiar
 3. El botón de instalación personalizado depende del soporte del navegador.
 4. La disponibilidad de cámara frontal/trasera depende del dispositivo y sus permisos.
 5. Si se publican cambios y el dispositivo conserva recursos antiguos, el Service Worker debe actualizar su caché. Por eso se versiona el nombre de la caché.
+6. Si se cierra el diálogo de instalación en vez de aceptar, el código actual limpia el evento diferido en `finally`, pero solo oculta el botón cuando la instalación fue aceptada. Sería posible mejorar ese caso ocultando el botón hasta recibir un nuevo `beforeinstallprompt`.
 
 Reconocer una limitación y explicar cómo se ampliaría demuestra que entiendes el alcance real del código.
 
