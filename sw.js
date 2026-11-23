@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE_NAME = 'inspeccion-pwa-v1';
+const CACHE_NAME = 'inspeccion-pwa-v2';
 const ARCHIVOS = [
   './',
   './index.html',
